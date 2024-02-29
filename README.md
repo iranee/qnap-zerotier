@@ -39,6 +39,7 @@ ZeroTier是一款异地组网工具，能够将多个网络设备连接到一个
 ![Star History Chart](https://api.star-history.com/svg?repos=iranee/qnap-zerotier&type=Date)
 
 ## 注意事项
+ * 建议路由器放行9993端口，尤其是有公网IP的用户。
  * 如果加入网络后不能访问，清尝试安装QVPN插件后重启系统
  * 如果加入网络后不能访问，清检查QuFirewall防火墙设置是否禁用了外国IP访问
    
