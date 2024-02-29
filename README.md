@@ -4,7 +4,7 @@ ZeroTier是一款异地组网工具，能够将多个网络设备连接到一个
 * ZeroTier 官方开源：https://github.com/zerotier/ZeroTierOne
   
 ## 第一版 v1.12.2.1
- * 暂时只支持加入1个Networks ID
+ * 暂时只支持加入1个Network ID
  * ARM版本受限于没有设备，无法测试。
    
 ##  网络状态说明
@@ -19,12 +19,11 @@ ZeroTier是一款异地组网工具，能够将多个网络设备连接到一个
 
 ## 如何使用
 在QNAP系统，通过App Center手动安装 ***.qpkg*** 后辍程序。
-
-打开WEBUI界面，输入要加入的 Networks ID，等待10秒。
+##### 打开WEBUI界面，输入要加入的 Networks ID，等待10秒。
 * 支持 x86_64 构架的QNAP存储设备【x86_64】
 * 支持 aach64 构架的QNAP存储设备 【arm_64】
 * 支持 ARM 构架的QNAP存储设备 【arm-x41】
-* 
+
 ## WebUI
 <img src="https://raw.githubusercontent.com/iranee/qnap-zerotier/main/logo.jpg" width="200"/>
 <img src="https://raw.githubusercontent.com/iranee/qnap-zerotier/main/WebUI.jpg" width="500"/>
