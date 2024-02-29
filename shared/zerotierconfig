@@ -1,0 +1,41 @@
+#!/bin/sh
+CONF=/etc/config/qpkg.conf
+QPKG_NAME="zerotier"
+QPKG_ROOT=$(/sbin/getcfg $QPKG_NAME Install_Path -f ${CONF})
+sleep 3
+
+echo "zerotier version is:"
+zerotier-cli -v
+while true; do
+pid=$(pidof zerotier-one)
+networkID=$(cat $QPKG_ROOT/configs/zerotier-config.json | awk -F '[,]' '{print $1}' | awk -F '["]' '{print $4}')
+change=$(cat $QPKG_ROOT/configs/zerotier-config.json | awk -F '[,]' '{print $2}' | awk -F '["]' '{print $4}')
+
+networks_onle=$(zerotier-cli -j listnetworks | tr -d '[:punct:][:space:]')
+networks_local=$(cat $QPKG_ROOT/configs/network_info.json | tr -d '[:punct:][:space:]')
+if [ "$networks_onle" != "$networks_local" ]; then
+   zerotier-cli -j listnetworks > $QPKG_ROOT/configs/network_info.json
+   echo $(date '+%T') "Network has changed."
+fi
+
+if [[ -n "$pid" ]] && [[ "$change" == "1" ]]; then
+	network_ids=$(zerotier-cli listnetworks | awk '{if (NR>1) print $3}')
+	for network_id in $network_ids; do
+	echo $(date '+%T') "Exiting network: $network_id"
+	zerotier-cli leave $network_id
+done
+	sed -i 's/"change":"1"/"change":"0"/' $QPKG_ROOT/configs/zerotier-config.json
+	sleep 2
+	join_output=$(zerotier-cli join $networkID)
+	if echo "$join_output" | grep -q "200"; then
+	echo -e $(date '+%T') "\033[0;32mSuccessfully joined network: $networkID\033[0m"
+  else
+	echo -e $(date '+%T') "\033[0;31mFailed to join network: $networkID\033[0m"
+	/sbin/log_tool  -N "ZeroTier" -G "状态" -t1 -uSystem -p127.0.0.1 -mlocalhost -a "[ZeroTier] 加入的Network ID无效，请检查后重新配置。"
+	fi
+fi
+
+  echo $(date '+%T') "zerotierconfig sleep 10s"
+  sleep 10
+done
+
