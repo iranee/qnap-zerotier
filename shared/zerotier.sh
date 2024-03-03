@@ -34,6 +34,11 @@ case "$1" in
 	rm -f /var/lib/zerotier-one
 	rm -f /usr/sbin/zerotier-cli
 	rm -f /usr/bin/zerotier-cli
+
+	device_name=$(iptables -L QUFIREWALL -v --line-numbers | awk '/zt[a-zA-Z0-9]+/{print $7}')
+	if [ -n "$device_name" ]; then
+		iptables -D QUFIREWALL -i "$device_name" -j ACCEPT
+	fi
 	;;
 
   restart)

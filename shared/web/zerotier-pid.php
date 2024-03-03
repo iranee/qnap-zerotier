@@ -13,6 +13,7 @@ if (empty($zerotier_output) || $zerotier_output === "[]") {
     $network_data = json_decode($zerotier_output, true);
     // 提取所需的数据
     $raw_status = $network_data[0]['status'];
+
     // 映射状态码到状态描述
     switch ($raw_status) {
         case "ACCESS_DENIED":
@@ -46,7 +47,7 @@ if (empty($zerotier_output) || $zerotier_output === "[]") {
         // 获取IP地址部分，去除CIDR表示
         $assigned_ips_cidr = $network_data[0]['assignedAddresses'][0];
         $assigned_ips_parts = explode('/', $assigned_ips_cidr);
-
+        
         // 检查IP是否为空
         if (empty($assigned_ips_parts[0])) {
             $assigned_ips = "🚫无连接";

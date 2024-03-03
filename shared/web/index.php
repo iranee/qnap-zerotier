@@ -19,6 +19,9 @@ if ( isset($_POST['networkID']) )
     <link rel="shortcut icon" href="static/favicon.ico" type="image/x-icon">
     <script src="static/jquery-2.2.3.min.js" type="text/javascript"></script>
 	<style>
+        body {
+            user-select: none; /* 禁止整个页面选择 */
+        }
         .bui-input {
             box-sizing: border-box;
             height: 40px;
@@ -26,7 +29,7 @@ if ( isset($_POST['networkID']) )
             line-height: 24px;
             border: 1px solid #DDDDDD;
             color: #5F5F5F;
-            font-size: 14px;
+            font-size: 18px;
             vertical-align: middle;
             border-radius: 4px;
             width: 300px;
@@ -63,6 +66,13 @@ if ( isset($_POST['networkID']) )
 
         body{ text-align:left} 
         .div{ margin:0 auto; width:438px;}
+		
+	input[type="password"] {
+    font-family: monospace;
+		}
+	input[type="text"] {
+    font-family: monospace;
+		}
     </style>
 </head>
 
@@ -72,7 +82,7 @@ if ( isset($_POST['networkID']) )
 <b>ZeroTier - 设置面板</b><p>
 <div align="right"><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="118" height="20" role="img"><linearGradient id="s" x2="0" y2="100%"><stop offset="0" stop-color="#bbb" stop-opacity=".1"/><stop offset="1" stop-opacity=".1"/></linearGradient><clipPath id="r"><rect width="118" height="20" rx="3" fill="#fff"/></clipPath><g clip-path="url(#r)"><rect width="55" height="20" fill="#555"/><rect x="55" width="63" height="20" fill="#f59400"/><rect width="118" height="20" fill="url(#s)"/></g><g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="110"><text x="285" y="140" transform="scale(.1)" fill="#fff" textLength="450">系统架构</text><text x="855" y="140" transform="scale(.1)" fill="#fff" textLength="450"><?php echo shell_exec("uname -m"); ?></text></g></svg>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="118" height="20" role="img"><linearGradient id="s" x2="0" y2="100%"><stop offset="0" stop-color="#bbb" stop-opacity=".1"/><stop offset="1" stop-opacity=".1"/></linearGradient><clipPath id="r"><rect width="118" height="20" rx="3" fill="#fff"/></clipPath><g clip-path="url(#r)"><rect width="55" height="20" fill="#555"/><rect x="55" width="63" height="20" fill="#007ec6"/><rect width="118" height="20" fill="url(#s)"/></g><g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="110"><text x="285" y="140" transform="scale(.1)" fill="#fff" textLength="450">本地版本</text><text x="855" y="140" transform="scale(.1)" fill="#fff" textLength="450"><?php echo shell_exec("cat ../version"); ?></text></g></svg>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-<a href="https://cheen.cn/954.html" target="_blank" title="更新日志"><img src="https://img.shields.io/github/v/release/iranee/qnap-zerotier?color=2&label=%E5%9C%A8%E7%BA%BF%E7%89%88%E6%9C%AC"></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</div><p>
+<a href="https://cheen.cn/1302" target="_blank" title="更新日志"><img src="https://img.shields.io/github/v/release/iranee/qnap-zerotier?color=2&label=%E5%9C%A8%E7%BA%BF%E7%89%88%E6%9C%AC"></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</div><p>
 
 <form id="zerotier_form" action="" method="post">
 <div id="main">
@@ -80,7 +90,9 @@ if ( isset($_POST['networkID']) )
 <tbody>
 <tr>
 <td><b>Network ID&nbsp;&nbsp;</b></td>
-<td><input placeholder='网络ID' name='networkID' id="networkID" value='' type='text' size='40'  class='bui-input' /></td></tr>
+<td>
+<input placeholder='网络ID' name='networkID' id="networkID" value='' type='password' size='40' class='bui-input' onmouseover="showText('networkID')" onmouseout="hideText('networkID')" data-original="" autocomplete="off" />
+</td></tr>
 </tbody>
 <td colspan='2'>
 <p><span id="spn_message" style="font-size: 0.9em;">网络检测中...</span></p><br />
@@ -111,6 +123,7 @@ $(document).ready(function() {
 	
     var checkCount = 0;
     var $spnMessage = $("#spn_message");
+
     setInterval(function() {
         $.ajax({
             type: 'GET',
@@ -118,7 +131,7 @@ $(document).ready(function() {
             url: 'zerotier-pid.php',
             success: function(data) {
                 if (data["zerotier_pid"] === null || data["zerotier_pid"] === "") {
-                    $spnMessage.html("进程未运行！");
+                    $spnMessage.html("未检测到进程，请重启插件！");
                 } else {
                     if (data["status"] === null || data["status"] === "") {
                         checkCount++;
@@ -135,11 +148,41 @@ $(document).ready(function() {
                 }
             },
             error: function(xhr, textStatus, errorThrown){
-                console.log('检查进程标识请求失败！');
+                console.log('进程标识请求失败！');
             }
         });
     }, 5000);
 });
+
+// 禁止整个页面右键菜单
+document.addEventListener('contextmenu', function(e) {
+    e.preventDefault();
+});
+// 允许文本框内右键菜单
+document.addEventListener('DOMContentLoaded', function() {
+    var textFields = document.querySelectorAll('input[type="text"], input[type="password"]');
+    textFields.forEach(function(field) {
+        field.addEventListener('contextmenu', function(e) {
+            e.stopPropagation();
+        });
+    });
+});
+
+// 切换密码框显示状态
+function togglePassword(id) {
+    var element = document.getElementById(id);
+    element.type = (element.type === "password") ? "text" : "password";
+}
+
+function showText(id) {
+    var element = document.getElementById(id);
+    element.type = "text";
+}
+
+function hideText(id) {
+    var element = document.getElementById(id);
+    element.type = "password";
+}
 </script>
 </div>
 </html>
