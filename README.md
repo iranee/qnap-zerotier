@@ -1,7 +1,7 @@
 # ZeroTier For QNAP with WebUI
 ## 介绍
 ZeroTier是一款异地组网工具，能够将多个网络设备连接到一个虚拟网络中，通过局域网IP即可轻松访问所有服务。
-eroTier builds modern, secure multi-point virtual networks, connecting peer-to-peer networks and multi-cloud mesh infrastructure.
+ZeroTier builds modern, secure multi-point virtual networks, connecting peer-to-peer networks and multi-cloud mesh infrastructure.
 * ZeroTier 官方开源：https://github.com/zerotier/ZeroTierOne
 
 ## v1.12.2.2
