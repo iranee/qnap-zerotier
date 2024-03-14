@@ -3,6 +3,9 @@
 ZeroTier是一款异地组网工具，能够将多个网络设备连接到一个虚拟网络中，通过局域网IP即可轻松访问所有服务。
 ZeroTier builds modern, secure multi-point virtual networks, connecting peer-to-peer networks and multi-cloud mesh infrastructure.
 * ZeroTier 官方开源：https://github.com/zerotier/ZeroTierOne
+## v1.12.2.3
+ * 优化防火墙命令
+ * 添加支持客户端bridging模式 #1
 
 ## v1.12.2.2
  * 自动添加虚拟网络设备到防火墙QuFirewall的规则
