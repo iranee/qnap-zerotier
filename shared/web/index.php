@@ -1,10 +1,12 @@
 <?php
-if ( isset($_POST['networkID']) ) 
-{
-  $networkID = $_POST['networkID'];
-  $json_str = '{"networkID":"' . $networkID . '","change":"1"}';
-  echo shell_exec("echo >../configs/network_info.json");
-  file_put_contents('../configs/zerotier-config.json', $json_str);
+session_start();
+
+if (isset($_POST['networkID'])) {
+    $networkID = $_POST['networkID'];
+    $json_str = '{"networkID":"' . $networkID . '","change":"1"}';
+    echo shell_exec("echo >../configs/network_info.json");
+    file_put_contents('../configs/zerotier-config.json', $json_str);
+    $saved = "已保存，";
 }
 ?>
 
@@ -95,7 +97,7 @@ if ( isset($_POST['networkID']) )
 </td></tr>
 </tbody>
 <td colspan='2'>
-<p><span id="spn_message" style="font-size: 0.9em;">网络检测中...</span></p><br />
+<p><span id="spn_message" style="font-size: 0.9em;"><?php echo $saved ?>网络检测中...</span></p><br />
 <p align='center' >
 <input type="submit" value="  保  存  " name="sub" class="button">
 <input type="button" value="ZeroTier 控制中心" id="goToWebsiteButton" class="button" style="width: 180px;background-color: #ffb700;" onclick="window.open('https://my.zerotier.com/', '_blank');">

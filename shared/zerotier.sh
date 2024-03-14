@@ -22,7 +22,6 @@ case "$1" in
 	/bin/ln -sf $QPKG_ROOT/zerotier-one /usr/sbin/zerotier-cli
     /bin/ln -sf $QPKG_ROOT/web $APACHE_ROOT/zerotier
 	/bin/chmod -Rf 777 $QPKG_ROOT/*
-
 	$QPKG_ROOT/zerotier-one $QPKG_ROOT -d &
 	$QPKG_ROOT/zerotierconfig >&1 & disown
     ;;
@@ -35,9 +34,13 @@ case "$1" in
 	rm -f /usr/sbin/zerotier-cli
 	rm -f /usr/bin/zerotier-cli
 
+    qufirewall_enabled=$(/sbin/getcfg qufirewall Enable -u -d FALSE -f $CONF)
+    qufirewall_status=$(/sbin/getcfg Global qufirewall_status -d 0 -f /etc/config/QuFirewall.conf)
+    if [ "$qufirewall_enabled" == "TRUE" -a "$qufirewall_status" == "1" ]; then
 	device_name=$(iptables -L QUFIREWALL -v --line-numbers | awk '/zt[a-zA-Z0-9]+/{print $7}')
 	if [ -n "$device_name" ]; then
 		iptables -D QUFIREWALL -i "$device_name" -j ACCEPT
+	    fi
 	fi
 	;;
 

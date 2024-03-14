@@ -1,44 +1,40 @@
 #!/bin/sh
-
 CONF=/etc/config/qpkg.conf
 QPKG_NAME="zerotier"
 QPKG_ROOT=$(/sbin/getcfg $QPKG_NAME Install_Path -f ${CONF})
 
-echo "zerotier version is:"
-zerotier-cli -v
+echo "ZeroTier version: $(zerotier-cli -v)"
 check_qufirewall() {
-    # 检查QNAP的QuFirewall是否启用,并启用了规则
-    plugin_enabled=$(/sbin/getcfg qufirewall Enable -u -d FALSE -f $CONF)
-    firewall_status=$(/sbin/getcfg Global firewall_status -d 0 -f /etc/config/QuFirewall.conf)
-    
-    if [ "$plugin_enabled" == "TRUE" -a "$firewall_status" == "1" ]; then
-        ##echo -e $(date '+%T') "\033[0;32mConfiguring firewall rules...\033[0m"
-        qf_device_names=$(iptables -L QUFIREWALL -v --line-numbers | awk '/zt[a-zA-Z0-9]+/{print $7}')
+    # 检查 QNAP 的 QuFirewall 是否启用，并启用了规则
+    qufirewall_enabled=$(/sbin/getcfg qufirewall Enable -u -d FALSE -f $CONF)
+    qufirewall_status=$(/sbin/getcfg Global qufirewall_status -d 0 -f /etc/config/QuFirewall.conf)
+
+    if [ "$qufirewall_enabled" == "TRUE" -a "$qufirewall_status" == "1" ]; then
         device_name=$(grep -o '"portDeviceName": "[^"]*' $QPKG_ROOT/configs/network_info.json | awk -F '"portDeviceName": "' '{print $2}' | head -n 1)
-        
-        # 检查device_name是否存在于防火墙规则
-        if [[ -n "$device_name" && "$device_name" == zt* ]]; then
-            iptables -C QUFIREWALL -i $device_name -j ACCEPT 2>/dev/null || {
-                iptables -I QUFIREWALL 1 -i $device_name -j ACCEPT
-                echo -e $(date '+%T') "\033[0;32mAllowing [$device_name] to pass through the firewall.\033[0m"
-            }
+
+        # 获取当前所有 QuFirewall 规则
+        if [ -z "$qf_device_names" ]; then
+            qf_device_names=$(iptables -L QUFIREWALL -v --line-numbers | awk '/zt[a-zA-Z0-9]+/{print $7}')
         fi
-        
+
+        # 检查 device_name 是否存在于防火墙规则，若不存在则添加
+		if [[ -n "$device_name" && "$device_name" == zt* ]]; then
+			if ! iptables -C QUFIREWALL -i $device_name -j ACCEPT 2>/dev/null; then
+				iptables -I QUFIREWALL 1 -i $device_name -j ACCEPT
+				qf_device_names=""
+				echo -e $(date '+%T') "\033[0;32mAllowing [$device_name] to pass through the firewall.\033[0m"
+			fi
+		fi
+
         # 删除所有不同名字的设备规则
-        for qf_device_name in $qf_device_names; do
-            if [[ "$qf_device_names" == "$device_name" ]]; then
-                # 如果qf_device_names包含device_name，删除所有不同名字的设备规则
-                continue
-            fi
-            if [[ -n "$qf_device_name" && "$qf_device_name" == zt* ]]; then
-                # 检查规则是否存在
-                iptables -C QUFIREWALL -i $qf_device_name -j ACCEPT 2>/dev/null && {
-                    # 规则存在，删除
-                    iptables -D QUFIREWALL -i $qf_device_name -j ACCEPT
-                    echo -e $(date '+%T') "\033[0;31mDeleting firewall rule for: $qf_device_name\033[0m"
-                }
-            fi
-        done
+		for qf_device_name in $qf_device_names; do
+			if [ "$qf_device_name" != "$device_name" ] && [[ "$qf_device_name" =~ ^zt.* ]]; then
+				iptables -C QUFIREWALL -i "$qf_device_name" -j ACCEPT && iptables -D QUFIREWALL -i "$qf_device_name" -j ACCEPT
+				qf_device_names=""
+				echo -e "$(date '+%T') \033[0;31mDeleting firewall rule for: $qf_device_name\033[0m"
+			fi
+		done
+
     fi
 }
 check_qufirewall
@@ -51,7 +47,7 @@ while true; do
 
     if [ "$networks_online" != "$networks_local" ]; then
         zerotier-cli -j listnetworks > $QPKG_ROOT/configs/network_info.json
-        echo $(date '+%T') "Network has changed."
+        echo "$(date '+%T') Network has changed."
         sleep 3
 
         # 调用QuFirewall函数
@@ -63,22 +59,25 @@ while true; do
     if [[ -n "$zerotier_pid" ]] && [[ "$change" == "1" ]]; then
         network_ids=$(zerotier-cli listnetworks | awk '{if (NR>1) print $3}')
         for network_id in $network_ids; do
-            echo $(date '+%T') "Exiting network: $network_id"
+            echo "$(date '+%T') Exiting network: $network_id"
             zerotier-cli leave $network_id
             echo > $QPKG_ROOT/configs/network_info.json
         done
         sed -i 's/"change":"1"/"change":"0"/' $QPKG_ROOT/configs/zerotier-config.json
         sleep 1
+
         join_output=$(zerotier-cli join $networkID)
+
         if echo "$join_output" | grep -q "200"; then
-            echo -e $(date '+%T') "\033[0;32mSuccessfully joined network: $networkID\033[0m"
+			zerotier-cli set $networkID allowDefault=1 >/dev/null 2>&1
+			zerotier-cli set $networkID allowGlobal=1 >/dev/null 2>&1
+			echo -e "$(date '+%T') \033[0;32mSuccessfully joined network: $networkID\033[0m"
+			echo -e "$(date '+%T') \033[0;32mSetting network: $networkID allowDefault=true and allowGlobal=true\033[0m"
             sleep 5
         else
-            echo -e $(date '+%T') "\033[0;31mFailed to join network: $networkID\033[0m"
+            echo -e "$(date '+%T') \033[0;31mFailed to join network: $networkID\033[0m"
             /sbin/log_tool -N "ZeroTier" -G "状态" -t1 -uSystem -p127.0.0.1 -mlocalhost -a "[ZeroTier] 加入的Network ID无效，请检查后重新配置。"
         fi
     fi
 
-    echo $(date '+%T') "zerotierconfig sleep 10s"
-    sleep 5
 done
