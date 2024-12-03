@@ -11,6 +11,7 @@ ZeroTier builds modern, secure multi-point virtual networks, connecting peer-to-
  * 增加设置选项  allow Global
 * 优化防火墙命令，避免频繁调用
 <img src="https://raw.githubusercontent.com/iranee/qnap-zerotier/refs/heads/main/New-webui.jpg" width="600"/>
+ * 二进制可执行文件来自：https://download.zerotier.com/RELEASES/
 
 ## v1.12.2.3
  * 优化防火墙命令
