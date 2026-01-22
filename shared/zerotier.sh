@@ -19,7 +19,9 @@ case "$1" in
     fi
 	/bin/ln -sf $QPKG_ROOT/ /var/lib/zerotier-one
 	/bin/ln -sf $QPKG_ROOT/zerotier-one /usr/bin/zerotier-cli
+	/bin/ln -sf $QPKG_ROOT/zerotier-one /usr/bin/zerotier-idtool
 	/bin/ln -sf $QPKG_ROOT/zerotier-one /usr/sbin/zerotier-cli
+	/bin/ln -sf $QPKG_ROOT/zerotier-one /usr/sbin/zerotier-idtool
     /bin/ln -sf $QPKG_ROOT/web $APACHE_ROOT/zerotier
 	/bin/chmod -Rf 777 $QPKG_ROOT/*
 	$QPKG_ROOT/zerotier-one $QPKG_ROOT -d &

@@ -2,82 +2,164 @@
 CONF=/etc/config/qpkg.conf
 QPKG_NAME="zerotier"
 QPKG_ROOT=$(/sbin/getcfg $QPKG_NAME Install_Path -f ${CONF})
+LOG_FILE="$QPKG_ROOT/zerotier.log"
 
-echo "ZeroTier version: $(zerotier-cli -v)"
-check_qufirewall() {
-    # 检查 QNAP 的 QuFirewall 是否启用，并启用了规则
-    qufirewall_enabled=$(/sbin/getcfg qufirewall Enable -u -d FALSE -f $CONF)
-    qufirewall_status=$(/sbin/getcfg Global qufirewall_status -d 0 -f /etc/config/QuFirewall.conf)
+log_message() {
+    local log_level="${2:-INFO}"
+    echo "$(date '+%Y-%m-%d %T') [$log_level] $1" | tee -a "$LOG_FILE"
+}
 
-    if [ "$qufirewall_enabled" == "TRUE" -a "$qufirewall_status" == "1" ]; then
-        device_name=$(grep -o '"portDeviceName": "[^"]*' $QPKG_ROOT/configs/network_info.json | awk -F '"portDeviceName": "' '{print $2}' | head -n 1)
+log_error() {
+    log_message "$1" "ERROR"
+}
 
-        # 获取当前所有 QuFirewall 规则
-        if [ -z "$qf_device_names" ]; then
-            qf_device_names=$(iptables -L QUFIREWALL -v --line-numbers | awk '/zt[a-zA-Z0-9]+/{print $7}')
+log_warning() {
+    log_message "$1" "WARNING"
+}
+
+join_networkID() {
+
+    networkID=$(jq -r '.networkID' "$QPKG_ROOT/configs/zerotier-config.json")
+    change=$(jq -r '.change' "$QPKG_ROOT/configs/zerotier-config.json")
+	
+	zerotier_pid=$(pidof zerotier-one)
+    if [ -z "$zerotier_pid" ]; then
+        log_warning "ZeroTier is not running. Attempting to restart."
+        $QPKG_ROOT/zerotier-one $QPKG_ROOT -d &
+        sleep 3
+        continue
+    fi
+
+    if [[ -n "$zerotier_pid" ]]; then
+        network_ids=$(zerotier-cli listnetworks | awk '{if (NR>1) print $3}')
+        if [[ "$change" == "1" ]]; then
+            log_message "Network configuration change detected."
+            for network_id in $network_ids; do
+                log_message "Attempting to leave network: $network_id"
+                # 退出网络之前用leave命令，新版本用删除配置文件命令
+                if [ -f "$QPKG_ROOT/networks.d/${network_id}.conf" ]; then
+                    rm -f "$QPKG_ROOT/networks.d/${network_id}.conf"
+					rm -f "$QPKG_ROOT/networks.d/${network_id}.local.conf"
+                    log_message "Attempting to leave network: $network_id"
+                else
+                    log_warning "Failed to leave network: $network_id"
+                fi
+			sync_network_info
+            done
+            echo "{}" > $QPKG_ROOT/configs/network_info.json
+            sed -i 's/"change":"1"/"change":"0"/' $QPKG_ROOT/configs/zerotier-config.json
+            
+            log_message "Restarting zerotier-one to apply changes..."
+            killall -9 zerotier-one
+            sleep 2
+            $QPKG_ROOT/zerotier-one $QPKG_ROOT -d &
+            sleep 3
         fi
 
-        # 检查 device_name 是否存在于防火墙规则，若不存在则添加
-		if [[ -n "$device_name" && "$device_name" == zt* ]]; then
-			if ! iptables -C QUFIREWALL -i $device_name -j ACCEPT 2>/dev/null; then
-				iptables -I QUFIREWALL 1 -i $device_name -j ACCEPT
-				qf_device_names=""
-				echo -e $(date '+%T') "\033[0;32mAllowing [$device_name] to pass through the firewall.\033[0m"
-			fi
-		fi
+        if [[ -z "$network_ids" ]] && [[ -n "$networkID" ]]; then
+            allowManaged=$(jq -r '.allowManaged' "$QPKG_ROOT/configs/zerotier-config.json")
+            allowGlobal=$(jq -r '.allowGlobal' "$QPKG_ROOT/configs/zerotier-config.json")
+            allowDefault=$(jq -r '.allowDefault' "$QPKG_ROOT/configs/zerotier-config.json")
+            allowDNS=$(jq -r '.allowDNS' "$QPKG_ROOT/configs/zerotier-config.json")
 
-        # 删除所有不同名字的设备规则
-		for qf_device_name in $qf_device_names; do
-			if [ "$qf_device_name" != "$device_name" ] && [[ "$qf_device_name" =~ ^zt.* ]]; then
-				iptables -C QUFIREWALL -i "$qf_device_name" -j ACCEPT && iptables -D QUFIREWALL -i "$qf_device_name" -j ACCEPT
-				qf_device_names=""
-				echo -e "$(date '+%T') \033[0;31mDeleting firewall rule for: $qf_device_name\033[0m"
-			fi
-		done
-
+            join_output=$(zerotier-cli join "$networkID" 2>&1)
+			zerotier-cli set "$networkID" allowManaged="$allowManaged" >/dev/null 2>&1
+            zerotier-cli set "$networkID" allowGlobal="$allowGlobal" >/dev/null 2>&1
+            zerotier-cli set "$networkID" allowDefault="$allowDefault" >/dev/null 2>&1
+            zerotier-cli set "$networkID" allowDNS="$allowDNS" >/dev/null 2>&1
+			sync_network_info
+            if [[ $? -eq 0 && "$join_output" =~ "200" ]]; then
+                log_message "Successfully joined network: $networkID"
+				log_message "Network join parameters - Managed: $allowManaged, Global: $allowGlobal, Default: $allowDefault, DNS: $allowDNS"
+                sleep 5
+            else
+                log_error "Failed to join network: $networkID - $join_output"
+            fi
+        fi
+    else
+        log_warning "ZeroTier daemon not running during network join attempt."
     fi
 }
+
+check_qufirewall() {
+    qufirewall_enabled=$(/sbin/getcfg qufirewall Enable -u -d FALSE -f $CONF)
+    qufirewall_status=$(/sbin/getcfg Global firewall_status -d 0 -f /etc/config/QuFirewall.conf)
+    device_name=$(grep -o '"portDeviceName": "[^"]*' $QPKG_ROOT/configs/network_info.json | awk -F '"portDeviceName": "' '{print $2}' | head -n 1)
+    qf_device_names=$(iptables -L QUFIREWALL -v --line-numbers | awk '/zt[a-zA-Z0-9]+/{print $7}')
+
+    if [[ -n "$device_name" && "$device_name" == zt* ]]; then
+        if ! echo "$qf_device_names" | grep -q "\b$device_name\b"; then
+            iptables -I QUFIREWALL 1 -i $device_name -j ACCEPT
+            log_message "Allowing ZeroTier interface [$device_name] to pass through QuFirewall."
+        else
+            log_message "ZeroTier interface [$device_name] already has firewall access."
+        fi
+    fi
+
+    for qf_device_name in $qf_device_names; do
+        if [ "$qf_device_name" != "$device_name" ] && [[ "$qf_device_name" =~ ^zt.* ]]; then
+            if iptables -C QUFIREWALL -i "$qf_device_name" -j ACCEPT 2>/dev/null; then
+                iptables -D QUFIREWALL -i "$qf_device_name" -j ACCEPT
+                log_message "Removed firewall rule : $qf_device_name"
+            fi
+        fi
+    done
+}
+
+sync_network_info() {
+    log_message "Syncing network information."
+    zerotier-cli -j listnetworks > $QPKG_ROOT/configs/network_info.json
+}
+
+join_networkID
 check_qufirewall
+
+network_loaded="false"
+PERIODIC_HEALTH_LOG_INTERVAL=10800  # 每3个小时输出一次日志
+sync_time=180						# 初始高强度检测 3 分钟
+max_sync_time=1800  				# 最大同步 30 分钟
+last_change_time=0
+last_health_log=0
+current_sync_time=$sync_time
+
 while true; do
-    zerotier_pid=$(pidof zerotier-one)
-    networkID=$(cat $QPKG_ROOT/configs/zerotier-config.json | awk -F '[,]' '{print $1}' | awk -F '["]' '{print $4}')
-    change=$(cat $QPKG_ROOT/configs/zerotier-config.json | awk -F '[,]' '{print $2}' | awk -F '["]' '{print $4}')
-    networks_online=$(zerotier-cli -j listnetworks | tr -d '[:punct:][:space:]')
-    networks_local=$(cat $QPKG_ROOT/configs/network_info.json | tr -d '[:punct:][:space:]')
+    current_time=$(date +%s)
+    networks_online=$(zerotier-cli -j listnetworks)
+    networks_local=$(cat "$QPKG_ROOT/configs/network_info.json")
+    networks_online_sanitized=$(echo "$networks_online" | tr -cd '[:alnum:]' | tr -s ' ')
+    networks_local_sanitized=$(echo "$networks_local" | tr -cd '[:alnum:]' | tr -s ' ')
 
-    if [ "$networks_online" != "$networks_local" ]; then
-        zerotier-cli -j listnetworks > $QPKG_ROOT/configs/network_info.json
-        echo "$(date '+%T') Network has changed."
-        sleep 3
-
-        # 调用QuFirewall函数
+    if [ "$networks_online_sanitized" != "$networks_local_sanitized" ]; then
+        last_change_time=$current_time
+        current_sync_time=$sync_time
+        log_message "Network configuration changes detected."
+        log_message "Online networks: $(echo "$networks_online" | jq -r '.[].nwid')"
+        log_message "Local networks: $(cat "$QPKG_ROOT/configs/network_info.json" | jq -r '.[].nwid')"
+        sync_network_info
         check_qufirewall
     fi
 
-    sleep 5
-	
-    if [[ -n "$zerotier_pid" ]] && [[ "$change" == "1" ]]; then
-        network_ids=$(zerotier-cli listnetworks | awk '{if (NR>1) print $3}')
-        for network_id in $network_ids; do
-            echo "$(date '+%T') Exiting network: $network_id"
-            zerotier-cli leave $network_id
-            echo > $QPKG_ROOT/configs/network_info.json
-        done
-        sed -i 's/"change":"1"/"change":"0"/' $QPKG_ROOT/configs/zerotier-config.json
-        sleep 1
+    # 定期输出记录
+    if [ $((current_time - last_health_log)) -ge $PERIODIC_HEALTH_LOG_INTERVAL ]; then
+        Network_online_info=$(zerotier-cli listnetworks)
+        log_message "--- Periodic Check ---"
+		log_message "ZeroTier interface: $device_name"
+        log_message "Network ID: $(echo "$Network_online_info" | awk 'NR > 1 {print $3}')"
+		log_message "Network ID - Managed: $allowManaged, Global: $allowGlobal, Default: $allowDefault, DNS: $allowDNS"
+        log_message "IP: $(echo "$Network_online_info" | awk 'NR > 1 {print $10}' | cut -d'/' -f1)"
+		log_message "zerotier-cli info: $(zerotier-cli info)"
+		log_message "----------------------"
+        last_health_log=$current_time
+    fi
 
-        join_output=$(zerotier-cli join $networkID)
-
-        if echo "$join_output" | grep -q "200"; then
-			zerotier-cli set $networkID allowDefault=1 >/dev/null 2>&1
-			zerotier-cli set $networkID allowGlobal=1 >/dev/null 2>&1
-			echo -e "$(date '+%T') \033[0;32mSuccessfully joined network: $networkID\033[0m"
-			echo -e "$(date '+%T') \033[0;32mSetting network: $networkID allowDefault=true and allowGlobal=true\033[0m"
-            sleep 5
-        else
-            echo -e "$(date '+%T') \033[0;31mFailed to join network: $networkID\033[0m"
-            /sbin/log_tool -N "ZeroTier" -G "状态" -t1 -uSystem -p127.0.0.1 -mlocalhost -a "[ZeroTier] 加入的Network ID无效，请检查后重新配置。"
+    # 超过同步时间后逐步增加检测间隔
+    if [[ $((current_time - last_change_time)) -gt $current_sync_time ]]; then
+        current_sync_time=$((current_sync_time * 2))
+        if [[ $current_sync_time -gt $max_sync_time ]]; then
+            current_sync_time=$max_sync_time
         fi
     fi
 
+    sleep 15
+    join_networkID
 done
